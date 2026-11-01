@@ -50,7 +50,8 @@ check linearizability
 
 **Expect:** The read gets its own log slot and returns true. Both checks pass.
 
-**Code:** `Recorder::record`, `Proposer::receive`, then `Simulator::apply`.
+**Code:** `protocols/quepaxa_driver.cpp` connects `Recorder::record` and
+`Proposer::receive` to `Simulator::apply_decided_prefix` in `application.cpp`.
 
 **Gotcha:** The preferred n1 can decide after one quorum round trip. The client
 response takes more time because learning and response delivery follow it.

@@ -38,7 +38,9 @@ make test
 - [Growing plan and scope](PLAN.md)
 - [Concepts in plain language](docs/CONCEPTS.md)
 - [Experiments](docs/EXPERIMENTS.md)
+- [Follow one write through the code](docs/WALKTHROUGH.md)
 - [Code reading path and protocol boundaries](docs/CODE.md)
+- [Adding another protocol](docs/ADDING_PROTOCOL.md)
 
 Implemented: QuePaxa's per-slot proposer/recorder core, an ordered config log,
 local/session/logged reads, compare-and-set, request deduplication, a controlled

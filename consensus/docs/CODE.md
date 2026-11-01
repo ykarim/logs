@@ -3,22 +3,68 @@
 The project uses C++20 and standard containers. There are no background threads,
 external consensus libraries, or generated protocol bindings.
 
-## A useful reading order
+## Start with one write
 
-1. `Command`, `Proposal`, `Reply` in `src/quepaxa.hpp`: what is on the wire?
-2. `Recorder::record`: what can one node remember and report?
-3. `Proposer::outgoing` and `receive`: what evidence changes its next action?
-4. `Message`, `Node`, `Request` in `src/lab.hpp`: separate local and observer state.
-5. `Simulator::step` in `src/lab.cpp`: deliver exactly one envelope.
-6. `Simulator::apply`: apply a contiguous decided prefix and deduplicate requests.
-7. `Simulator::read`: compare local, session, and logged reads.
-8. `write_event` and `accept_event`: the separate asynchronous architecture.
-9. `check_linearizable`: try legal sequential explanations of client histories.
-10. `src/main.cpp`: parse commands into these operations.
+Read [the one-write walkthrough](WALKTHROUGH.md). Keep these three files open:
 
-`execute` is the map's sequential specification. The running application and
-history checker both use it. That keeps the rules for CAS and absent values
-explicit, but means independent outcome tests remain important too.
+1. [`client.cpp`](../src/client.cpp): a client submits a request.
+2. [`protocols/quepaxa_driver.cpp`](../src/protocols/quepaxa_driver.cpp):
+   QuePaxa sends records, processes replies and announces decisions.
+3. [`application.cpp`](../src/application.cpp): applies learned entries and answers clients.
+
+```text
+Shared client       QuePaxa implementation             Shared application
+submit -----------> submit -> send_record_requests
+                                  |
+                              on_record
+                                  |
+                              on_reply --> Proposer::receive
+                                  |             decision or another phase
+                              on_learn -------------> learn
+                                                        |
+                                                apply_decided_prefix
+                                                        |
+                                                   on_response
+```
+
+The four QuePaxa phases are visible in
+[`protocols/quepaxa.hpp`](../src/protocols/quepaxa.hpp). No callbacks hide the
+phase switch. `Runtime::send` queues an envelope; `network.cpp` delivers it later.
+`Runtime::learn` is a local call into application code, not another network hop.
+
+## The protocol boundary
+
+[`protocol.hpp`](../src/protocol.hpp) defines one small interface implemented
+once per replica. It accepts client submissions, messages, timers and explicit
+repair requests. [`runtime.hpp`](../src/runtime.hpp) gives that implementation
+access to local application state, sending, timers, reporting a learned decision,
+local async completion and trace output. It exposes no other replica's state.
+The engine routes opaque message payloads. See [adding a protocol](ADDING_PROTOCOL.md).
+
+## Where each idea lives
+
+| File | Question it answers |
+|---|---|
+| [`config.cpp`](../src/config.cpp) | What does get/set/CAS mean on an ordinary map? |
+| [`client.cpp`](../src/client.cpp) | How are client identity, pending history and retry preserved? |
+| [`protocols/quepaxa_driver.cpp`](../src/protocols/quepaxa_driver.cpp) | What does QuePaxa do when a request or record/reply/learn arrives? |
+| [`protocols/quepaxa.hpp`](../src/protocols/quepaxa.hpp) | Which reply evidence permits phase advancement or decision? |
+| [`application.cpp`](../src/application.cpp) | Where do learned decisions become config updates and client responses? |
+| [`protocols/async_replication.cpp`](../src/protocols/async_replication.cpp) | How are eventual/causal writes merged without an ordered log? |
+| [`model.hpp`](../src/model.hpp) | What is an envelope, local application state, timer, history or session? |
+| [`reads.cpp`](../src/reads.cpp) | How do local, session and logged reads differ? |
+| [`network.cpp`](../src/network.cpp) | How are time, delivery, timers and faults simulated? |
+| [`inspection.cpp`](../src/inspection.cpp), [`checks.cpp`](../src/checks.cpp) | How do we observe behavior and check correctness? |
+| [`protocol_factory.cpp`](../src/protocol_factory.cpp) | Which implementation does a selected name construct? |
+| [`main.cpp`](../src/main.cpp) | How are CLI commands parsed? |
+
+`simulator.hpp` declares the shared coordinator. Concrete protocol state and wire
+payloads live under `protocols/`; shared headers do not include those types.
+There is one ordinary virtual interface, with no dynamic loading or external
+framework. `support.hpp` only formats node names and checks preconditions.
+
+`execute` is the map's sequential specification. The application and history
+checker both use it; independent outcome tests are therefore important too.
 
 ## QuePaxa source mapping
 
@@ -49,8 +95,10 @@ algorithm. No quorum transition consults another node's memory.
 - All messages, including self messages, use the configured hop delay.
 - `heal` restores routes; `sync` sends known decisions/events again.
 - Crash-stop discards delivery to/from the stopped node; restart is not modeled.
-- `run` has a message bound. An empty queue does not prove client completion.
+- `run` has a delivered-event bound (messages plus timers). An empty queue does not prove client completion.
 - `retry` is one original client operation, not a second invocation in history.
+- Message/timer IDs share an event sequence; `step` selects the earliest by
+  scheduled time then ID. A protocol's timer handler checks its own generation.
 - The configured preferred proposer stays fixed. Automatic election/adaptation,
   automatic hedging, periodic repair and durable restart are not implemented.
 
@@ -79,6 +127,10 @@ complete causal-history checker yet.
 
 `make test` runs targeted application and protocol tests, 150 seeded concurrent
 schedules, and every documented script with expected-outcome assertions.
+`tests/protocol_boundary.cpp` injects a deliberately non-consensus test probe
+with its own payload and timer. It checks dispatch, stale timer handling,
+network faults, crash-stop, shared application and client completion without
+registering any probe-specific engine branches.
 
 To debug a transition, use `-O0 -g` (the Make default) and a debugger breakpoint
 in `Simulator::step` or `Proposer::receive`. Tests use ordinary exceptions and

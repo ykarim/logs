@@ -1,5 +1,6 @@
 #pragma once
 
+#include "config.hpp"
 #include <compare>
 #include <cstdint>
 #include <limits>
@@ -10,11 +11,6 @@
 #include <algorithm>
 
 namespace lab {
-
-struct Command {
-    std::string id, client, kind, key, value, expected;
-    auto operator<=>(const Command&) const = default;
-};
 
 // A proposal is ordered by priority, then proposer, then value. Full values are
 // carried in messages to keep availability separate from payload retrieval.
@@ -50,6 +46,10 @@ struct Recorder {
     }
 };
 
+// step = 4 * round + phase. First round starts at step 4.
+// These names describe the purpose of each record/reply exchange.
+enum class Phase { propose = 0, spread_candidate = 1, check_decision = 2, choose_next_round = 3 };
+
 struct Progress {
     bool advance = false;
     std::optional<Command> decision;
@@ -64,12 +64,17 @@ struct Proposer {
     bool done = false;
 
     Proposer() = default;
-    Proposer(int owner, Command command)
-        : candidate{highest_priority, owner, std::move(command)} {}
+    Proposer(int owner, Command command) : candidate{highest_priority, owner, std::move(command)} {}
 
+    Phase phase() const {
+        return static_cast<Phase>(step % 4);
+    }
+
+    // Decide which priority THIS outgoing proposal gets. A backup does not
+    // become preferred just because it starts working.
     Proposal outgoing(int owner, int leader, std::mt19937_64& random) const {
         auto proposal = candidate;
-        if (step % 4 == 0 && (step > 4 || owner != leader)) {
+        if (phase() == Phase::propose && (step > 4 || owner != leader)) {
             // Independent priority for each recorder. Zero is reserved for nil.
             std::uniform_int_distribution<std::uint64_t> draw(1, highest_priority - 1);
             proposal.priority = draw(random);
@@ -78,36 +83,53 @@ struct Proposer {
     }
 
     Progress receive(int from, const Reply& reply, int quorum) {
-        if (done) return {};
+        if (done)
+            return {};
+        // Another proposer already advanced this recorder. Catch up using
+        // its first proposal at that later step; do not restart with our value.
         if (reply.step > step) {
             step = reply.step;
             candidate = reply.first;
             replies.clear();
             return {true, {}};
         }
-        if (reply.step != step) return {};
+        if (reply.step != step)
+            return {};
         replies[from] = reply; // Two replies from one recorder count only once.
-        if (static_cast<int>(replies.size()) < quorum) return {};
+        if (static_cast<int>(replies.size()) < quorum)
+            return {};
 
-        Proposal first, previous;
-        bool fast = true;
+        Proposal best_first, best_previous;
+        bool all_firsts_have_special_priority = true;
         for (const auto& [_, response] : replies) {
-            first = std::max(first, response.first);
-            previous = std::max(previous, response.previous);
-            fast = fast && response.first.priority == highest_priority;
+            best_first = std::max(best_first, response.first);
+            best_previous = std::max(best_previous, response.previous);
+            all_firsts_have_special_priority =
+                all_firsts_have_special_priority && response.first.priority == highest_priority;
         }
-        switch (step % 4) {
-        case 0:
-            if (fast) return decide(first.command);
-            candidate = first;
+        // The protocol's four phases. Every phase already gathered a quorum
+        // above. This switch determines what that particular evidence means.
+        switch (phase()) {
+        case Phase::propose:
+            // FAST PATH: a quorum first recorded the unique preferred proposal.
+            if (all_firsts_have_special_priority)
+                return decide(best_first.command);
+            // FALLBACK: adopt the best first proposal, even if it isn't ours.
+            candidate = best_first;
             break;
-        case 1: // Spread the candidate. No additional local computation.
+        case Phase::spread_candidate:
+            // We have spread our candidate to a quorum. No new selection here.
             break;
-        case 2:
-            if (candidate == previous) return decide(candidate.command);
+        case Phase::check_decision:
+            // Compare our spread candidate with the best aggregate from the
+            // preceding step. A match is QuePaxa's fallback decision condition.
+            if (candidate == best_previous)
+                return decide(candidate.command);
             break;
-        case 3:
-            candidate = previous;
+        case Phase::choose_next_round:
+            // No decision this round: carry the gathered candidate forward.
+            // outgoing() will randomize priorities for the next round.
+            candidate = best_previous;
             break;
         }
         ++step;
@@ -115,7 +137,7 @@ struct Proposer {
         return {true, {}};
     }
 
-private:
+  private:
     Progress decide(const Command& command) {
         done = true;
         return {false, command};
