@@ -1,0 +1,14 @@
+# Predict: does submitting a write change every node immediately?
+new quepaxa 3 42
+set n1 checkout true
+status
+messages
+step
+inspect n1
+run
+status
+get n3 checkout linearizable bob
+run
+history
+check
+check linearizability

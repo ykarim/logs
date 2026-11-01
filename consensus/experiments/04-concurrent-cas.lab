@@ -1,0 +1,16 @@
+new quepaxa 3 42
+set n1 route east
+run
+cas n2 route east west alice
+cas n3 route east central bob
+run
+history
+# A proposal can lose a slot. Retry the same requests, retaining their IDs.
+retry n1 r2
+run
+retry n2 r3
+run
+history
+status
+check
+check linearizability

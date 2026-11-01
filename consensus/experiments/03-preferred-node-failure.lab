@@ -1,0 +1,8 @@
+new quepaxa 3 42
+stop n1
+set n2 checkout true
+run
+inspect n2
+history
+check
+check linearizability

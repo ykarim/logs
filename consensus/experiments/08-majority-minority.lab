@@ -1,0 +1,20 @@
+new quepaxa 5 42
+isolate n4
+isolate n5
+set n1 checkout true alice
+run
+set n4 checkout false bob
+run
+status
+history
+check
+# Minority's pending write can still happen after communication recovers.
+heal
+sync
+run
+retry n2 r2
+run
+history
+status
+check
+check linearizability

@@ -1,0 +1,19 @@
+# Deliver an enable operation before the destination it depends on.
+new eventual 3 42
+set n1 destination east
+set n1 enabled true
+messages
+step 3
+status
+step 1
+status
+# Repeat exactly the same delivery order with dependency buffering.
+new causal 3 42
+set n1 destination east
+set n1 enabled true
+step 3
+status
+inspect n2
+step 1
+status
+inspect n2

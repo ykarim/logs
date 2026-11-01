@@ -1,0 +1,13 @@
+new eventual 3 42
+isolate n1
+set n1 route west alice
+set n2 route east bob
+run
+status
+get n1 route local charlie
+check linearizability
+heal
+sync
+run
+status
+inspect n3

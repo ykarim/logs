@@ -1,0 +1,14 @@
+new quepaxa 3 42
+isolate n3
+set n1 checkout true alice
+run
+get n3 checkout local bob
+check
+check linearizability
+# Expected WAIT: alice has observed the successful write.
+get n3 checkout session alice
+heal
+sync
+run
+get n3 checkout session alice
+status

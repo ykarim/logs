@@ -1,0 +1,21 @@
+new quepaxa 3 42
+set n1 checkout true
+# Deliver two recorder requests and their replies: sufficient for a decision.
+step 1
+step 2
+step 4
+step 5
+# Deliver learning, while deliberately withholding client responses.
+step 6
+step 7
+step 8
+tick 1000
+history
+get n2 checkout local bob
+check linearizability
+# Client deadline elapsed, but the write has already happened.
+run
+retry n2 r1
+run
+history
+check
