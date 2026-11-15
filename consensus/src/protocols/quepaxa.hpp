@@ -46,8 +46,28 @@ struct Recorder {
     }
 };
 
-// step = 4 * round + phase. First round starts at step 4.
-// These names describe the purpose of each record/reply exchange.
+// One QuePaxa round consists of four record/reply exchanges. The proposer sends
+// its current candidate to all recorders and waits for a quorum in every phase;
+// the phase determines what the returned evidence lets the proposer conclude:
+//
+//   0 propose:
+//     Introduce prioritized proposals and select the best proposal observed by
+//     a quorum. The preferred proposer may decide immediately on the fast path.
+//
+//   1 spread_candidate:
+//     Write that selected candidate to a quorum. This spreads knowledge of the
+//     candidate; the proposer does not make another selection in this phase.
+//
+//   2 check_decision:
+//     Gather evidence produced by the spread. If the candidate agrees with the
+//     best relevant recorder summary, enough replicas overlap to decide it.
+//
+//   3 choose_next_round:
+//     If phase 2 could not decide, choose the best safe candidate found in the
+//     evidence and carry it into the next round instead of starting over.
+//
+// step = 4 * round + phase, so steps 4, 5, 6, and 7 are the four phases of
+// round 1. These are logical progress steps, not wall-clock time.
 enum class Phase { propose = 0, spread_candidate = 1, check_decision = 2, choose_next_round = 3 };
 
 struct Progress {

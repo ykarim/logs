@@ -129,6 +129,13 @@ replace that preference automatically. Teach these additions in order:
    from recorder participation and proposer activation. Model submitter-to-node
    delays/failures separately from replica-to-replica traffic, including failure
    of the initially contacted node before it forwards anything.
+   Record at least two distinct moments: `invoked_at`, when the client hands the
+   operation to the submitter, and `received_at`, when a replica receives its
+   copy. End-to-end client latency starts at invocation. A replica's freshness
+   remains a separate value such as its applied log slot; sharing the simulator's
+   virtual clock never implies that replicas have applied equal prefixes.
+   Add a trace where a request reaches a lagging replica after network delay,
+   then show catch-up time separately from request-delivery time.
 3. **Automatic hedging.** Add visible virtual activation timers for additional
    proposers. Submit once, slow or stop the preferred node, and watch another
    proposer continue without an election. Compare zero, short and long hedging
@@ -202,6 +209,12 @@ Add per-node or per-link latency controls so one proposer can be slow while
 others communicate quickly. Trace receipt, timer scheduling, local progress
 evidence, activation/suppression, decision, application and response separately.
 Include a plain-language reason and the relevant slot/step in each event.
+
+The simulator currently uses one virtual event clock so executions are ordered
+and reproducible. Treat it as an observer's timeline, not replica freshness and
+not a synchronized-clock assumption used by the consensus protocol. If clock
+skew becomes a learning goal, add explicit node-local clocks in a later lesson
+without replacing log positions or causal metadata with wall-clock time.
 
 Acceptance experiments: healthy preferred proposer suppresses unnecessary work
 when evidence arrives in time; a crash before request forwarding cannot strand
